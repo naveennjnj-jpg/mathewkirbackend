@@ -302,7 +302,8 @@ export const createTenantService = async (req: Request) => {
             })
 
             if (!treasurerUser) {
-                tempPassword = generateNumericOTP(8)
+                // tempPassword = generateNumericOTP(8)
+                tempPassword= treasurerEmail
                 const hashedPassword = await hashPassword(tempPassword)
 
                 treasurerUser = await prisma.user.create({
@@ -352,7 +353,8 @@ export const createTenantService = async (req: Request) => {
                 to: treasurerEmail,
                 tenantName: name,
                 tenantSubdomain: subdomain.toLowerCase(),
-                tempPassword: tempPassword || 'Please check with your administrator', // If user already existed
+                // tempPassword: tempPassword || 'Please check with your administrator', // If user already existed
+                tempPassword: treasurerEmail,
                 invitedBy: inviter?.full_name || 'Admin',
                 role: 'Treasurer'
             })

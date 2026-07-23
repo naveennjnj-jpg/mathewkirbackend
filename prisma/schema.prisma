@@ -11,11 +11,11 @@ model Tenant {
   tenant_id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name               String             @db.VarChar(255)
   subdomain          String             @unique @db.VarChar(100)
-  logo_url           String?            @db.VarChar(500)
-  brand_color        String?            @db.VarChar(10)
-  bank_account_ref   String?            @db.VarChar(255) // reference to AWS Secrets Manager entry, NOT raw bank details
+  bank_account_ref   String?            @db.VarChar(255)
   created_at         DateTime           @default(now()) @db.Timestamp(6)
   status             String             @default("active") @db.VarChar(20)
+  brand_color        String?            @db.VarChar(10)
+  logo_url           String?            @db.VarChar(500)
   audit_logs         AuditLog[]
   beneficiaries      Beneficiary[]
   contributions      Contribution[]
@@ -29,20 +29,20 @@ model Tenant {
 }
 
 model User {
-  user_id                String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email                  String                @unique @db.VarChar(255)
-  password_hash          String                @db.VarChar(255)
-  full_name              String?               @db.VarChar(255)
-  phone                  String?               @db.VarChar(20)
-  is_super_admin         Boolean               @default(false)
-  created_at             DateTime              @default(now()) @db.Timestamp(6)
+  user_id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                  String               @unique @db.VarChar(255)
+  password_hash          String               @db.VarChar(255)
+  full_name              String?              @db.VarChar(255)
+  phone                  String?              @db.VarChar(20)
+  created_at             DateTime             @default(now()) @db.Timestamp(6)
+  is_super_admin         Boolean              @default(false)
   audit_logs             AuditLog[]
-  verified_contributions Contribution[]        @relation("ContributionVerifier")
-  created_events         FundraisingEvent[]    @relation("EventCreator")
+  verified_contributions Contribution[]       @relation("ContributionVerifier")
+  created_events         FundraisingEvent[]   @relation("EventCreator")
   memberships            Membership[]
   notifications          Notification[]
-  payouts                Payout[]              @relation("PayoutRecorder")
   password_reset_tokens  PasswordResetToken[]
+  payouts                Payout[]             @relation("PayoutRecorder")
 
   @@map("users")
 }
@@ -51,7 +51,7 @@ model Membership {
   membership_id String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenant_id     String        @db.Uuid
   user_id       String        @db.Uuid
-  role          String        @db.VarChar(20) // 'member' | 'treasurer'
+  role          String        @db.VarChar(20)
   status        String        @default("active") @db.VarChar(20)
   joined_at     DateTime      @default(now()) @db.Timestamp(6)
   beneficiaries Beneficiary[]
@@ -67,16 +67,21 @@ model Membership {
 }
 
 model Beneficiary {
-  beneficiary_id String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenant_id      String     @db.Uuid
-  membership_id  String     @db.Uuid
-  name           String     @db.VarChar(255)
-  relationship   String?    @db.VarChar(100)
-  dob            DateTime?  @db.Date
-  contact_info   String?    @db.VarChar(255)
-  membership     Membership @relation(fields: [membership_id], references: [membership_id], onDelete: Cascade)
-  tenant         Tenant     @relation(fields: [tenant_id], references: [tenant_id], onDelete: Cascade)
-  payouts        Payout[]
+  beneficiary_id     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id          String             @db.Uuid
+  // Made optional: the Create/Edit Event forms only collect a free-text
+  // beneficiary name + relationship, with no field to pick "whose" member
+  // record this beneficiary belongs to. If you later add that picker to
+  // the UI, this can be made required again.
+  membership_id      String?            @db.Uuid
+  name               String             @db.VarChar(255)
+  relationship       String?            @db.VarChar(100)
+  dob                DateTime?          @db.Date
+  contact_info       String?            @db.VarChar(255)
+  membership         Membership?        @relation(fields: [membership_id], references: [membership_id], onDelete: Cascade)
+  tenant             Tenant             @relation(fields: [tenant_id], references: [tenant_id], onDelete: Cascade)
+  payouts            Payout[]
+  fundraising_events FundraisingEvent[]
 
   @@index([tenant_id])
   @@index([membership_id])
@@ -87,6 +92,7 @@ model FundraisingEvent {
   event_id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenant_id          String        @db.Uuid
   created_by         String        @db.Uuid
+  beneficiary_id     String?       @db.Uuid
   purpose            String?       @db.VarChar(500)
   fixed_amount       Decimal       @db.Decimal(10, 2)
   deadline           DateTime?     @db.Date
@@ -94,11 +100,13 @@ model FundraisingEvent {
   supporting_doc_url String?       @db.VarChar(500)
   created_at         DateTime      @default(now()) @db.Timestamp(6)
   event_members      EventMember[]
+  beneficiary        Beneficiary?  @relation(fields: [beneficiary_id], references: [beneficiary_id])
   creator            User          @relation("EventCreator", fields: [created_by], references: [user_id])
   tenant             Tenant        @relation(fields: [tenant_id], references: [tenant_id], onDelete: Cascade)
 
   @@index([tenant_id])
   @@index([created_by])
+  @@index([beneficiary_id])
   @@map("fundraising_events")
 }
 
@@ -179,7 +187,7 @@ model Notification {
 
 model AuditLog {
   log_id      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenant_id   String?  @db.Uuid // nullable to allow super-admin (tenant-less) actions
+  tenant_id   String?  @db.Uuid
   user_id     String   @db.Uuid
   action      String?  @db.VarChar(255)
   entity_type String?  @db.VarChar(50)
@@ -194,16 +202,14 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-// Single, unified password-reset system (replaces the old duplicate
-// reset_token/reset_otp columns that previously lived on User).
 model PasswordResetToken {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id    String   @db.Uuid
   token      String   @db.VarChar(255)
-  otp        String?  @db.VarChar(10)
-  expires_at DateTime @db.Timestamp(6)
-  used       Boolean  @default(false)
   created_at DateTime @default(now()) @db.Timestamp(6)
+  expires_at DateTime @db.Timestamp(6)
+  otp        String?  @db.VarChar(10)
+  used       Boolean  @default(false)
+  user_id    String   @db.Uuid
   user       User     @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
 
   @@unique([user_id, token])

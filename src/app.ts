@@ -4,7 +4,7 @@ import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
 import connectDB from "./config/db.js";
-import { admin, user } from "./routes/index.js";
+import { admin, user, treasurer} from "./routes/index.js";
 // import { checkValidAdminRole } from "./utils/index.js";
 import bodyParser from "body-parser";
 import { forgotPassword } from "./controllers/user/user.js";
@@ -20,22 +20,40 @@ app.set("trust proxy", true);
 
 // ✅ CORS Configuration - FIXED
 const corsOptions = {
-  origin: [
-    "http://localhost:5173",  // Vite
-    "http://localhost:3000",  // React
+ origin: [
+    // ✅ Localhost patterns
+    /^http:\/\/[a-zA-Z0-9-]*\.?localhost:\d+$/,
+    /^http:\/\/[a-zA-Z0-9-]*\.?127\.0\.0\.1:\d+$/,
+    /^https:\/\/[a-zA-Z0-9-]*\.?localhost:\d+$/,
+    /^https:\/\/[a-zA-Z0-9-]*\.?127\.0\.0\.1:\d+$/,
+    
+    // ✅ Specific localhost ports
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:5174",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:3000",
-    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    
+    // ✅ Production domain with any subdomain
+    /^https:\/\/[a-zA-Z0-9-]*\.?thebrtsa\.com$/,
+    /^http:\/\/[a-zA-Z0-9-]*\.?thebrtsa\.com$/,
+    
+    // ✅ Vercel preview deployments
+    /^https:\/\/[a-zA-Z0-9-]*\.vercel\.app$/,
     "https://test-app-taupe-ten.vercel.app",
-          // All localhost subdomains (any subdomain.localhost)
-      /^http:\/\/[a-zA-Z0-9-]+\.localhost:(3000|3001|5173|5174)$/,
-      
-      // All 127.0.0.1 subdomains
-      /^http:\/\/[a-zA-Z0-9-]+\.127\.0\.0\.1:(3000|3001|5173|5174)$/,
   ],
   methods: ["GET", "POST", "PATCH", "DELETE", "PUT", "OPTIONS"],
   credentials: true,
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    allowedHeaders: [
+    "Content-Type", 
+    "Authorization", 
+    "X-Requested-With",
+    "x-tenant-subdomain", // ✅ ADD THIS - IMPORTANT!
+    "Accept",
+    "Origin",
+    "Access-Control-Allow-Origin",
+  ],
 };
 
 app.use(cors(corsOptions));
@@ -72,7 +90,7 @@ app.use("/api/auth", user);  // Your auth routes including signup
 // app.use("/api/login", login);
 app.use("/api/forgot-password", forgotPassword);
 app.use("/api/reset-password", verifyPasswordReset);
-app.use("/api/payments", user);
+app.use("/api/treasurer", treasurer);
 app.use("/api", user);
 
 // ✅ Error handling middleware (optional but recommended)

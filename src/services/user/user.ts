@@ -143,8 +143,8 @@ export const signupService = async (payload: SignupPayload) => {
 export const loginService = async (payload: LoginPayload) => {
     try {
         const { email, password } = payload
-        console.log("emial",email)
-        console.log("password",password)
+        // console.log("emial",email)
+        // console.log("password",password)
         const normalizedEmail = email.toLowerCase().trim()
 
         // Find user
@@ -257,15 +257,35 @@ export const userdataServive = async (payload: { userId: string }) => {
             }
         }
 
+        // Determine role (same as loginService)
+        let primaryRole = "member"
+
+        if (user.is_super_admin) {
+            primaryRole = "admin"
+        } else if (user.memberships.length > 0) {
+            const roles = user.memberships.map((m) => m.role)
+
+            if (roles.includes("treasurer")) {
+                primaryRole = "treasurer"
+            } else if (roles.includes("member")) {
+                primaryRole = "member"
+            } else {
+                primaryRole = roles[0]
+            }
+        }
+
         // Remove sensitive data
-        const { password_hash, reset_token, reset_token_expires, reset_otp, reset_otp_expires, ...userData } = user
+        const { password_hash, ...userData } = user
 
         return {
             success: true,
             message: "User data fetched successfully",
             data: {
-                user: userData,
-                memberships: user.memberships.map(m => ({
+                user: {
+                    ...userData,
+                    role: primaryRole
+                },
+                memberships: user.memberships.map((m) => ({
                     id: m.membership_id,
                     tenantId: m.tenant_id,
                     tenantName: m.tenant.name,
@@ -279,6 +299,7 @@ export const userdataServive = async (payload: { userId: string }) => {
 
     } catch (error: any) {
         console.error("Fetch user error:", error)
+
         return {
             success: false,
             message: error.message || "Failed to fetch user data",
@@ -920,10 +941,16 @@ export const updateAPasswordService = async (payload: UpdatePasswordPayload) => 
 /**
  * Get Dashboard Stats Service
  */
+// services/admin/tenant/tenant.ts or services/treasurer/dashboard.ts
+
+/**
+ * Get Dashboard Stats Service for Treasurer
+ */
 export const getDashboardStatsService = async (req: Request) => {
     try {
         const userId = (req as any).currentUser
 
+        // Get user with memberships and tenant info
         const user = await prisma.user.findUnique({
             where: { user_id: userId },
             include: {
@@ -949,38 +976,210 @@ export const getDashboardStatsService = async (req: Request) => {
             }
         }
 
-        // Calculate stats
-        const totalEvents = user.memberships.reduce((acc, membership) => {
-            return acc + membership.event_members.length
-        }, 0)
+        // Get tenant info (assuming treasurer belongs to one tenant)
+        const membership = user.memberships[0]
+        const tenant = membership?.tenant
 
-        const totalContributions = user.memberships.reduce((acc, membership) => {
-            return acc + membership.event_members.reduce((sum, em) => {
-                return sum + em.contributions.reduce((s, c) => s + Number(c.amount), 0)
-            }, 0)
-        }, 0)
+        if (!tenant) {
+            return {
+                success: false,
+                message: "No tenant found for this user",
+                code: httpStatusCode.NOT_FOUND
+            }
+        }
 
-        const pendingPayments = user.memberships.reduce((acc, membership) => {
-            return acc + membership.event_members.filter(em => em.status === 'pending').length
-        }, 0)
+        // Get all members of this tenant (for dues calculation)
+        const tenantMembers = await prisma.membership.findMany({
+            where: {
+                tenant_id: tenant.tenant_id,
+                status: 'active'
+            },
+            include: {
+                user: true,
+                event_members: {
+                    include: {
+                        contributions: true,
+                        event: true
+                    }
+                }
+            }
+        })
+
+        // Calculate total dues collected (this month)
+        const now = new Date()
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+
+        let totalDuesCollected = 0
+        let totalDuesCollectedAllTime = 0
+        let pendingAmount = 0
+        let activeEvents = 0
+        let overdueMembers = 0
+
+        // Get all events for this tenant
+        const events = await prisma.fundraisingEvent.findMany({
+            where: {
+                tenant_id: tenant.tenant_id,
+                status: 'active'
+            },
+            include: {
+                event_members: {
+                    include: {
+                        contributions: true,
+                        membership: {
+                            include: {
+                                user: true
+                            }
+                        }
+                    }
+                }
+            }
+        })
+
+        activeEvents = events.length
+
+        // Process each event
+        events.forEach(event => {
+            const eventMembers = event.event_members || []
+
+            eventMembers.forEach(em => {
+                const contributions = em.contributions || []
+                
+                // Calculate total contributions (all time)
+                contributions.forEach(contribution => {
+                    const amount = Number(contribution.amount) || 0
+                    totalDuesCollectedAllTime += amount
+
+                    // Check if contribution is from this month
+                    if (contribution.paid_at) {
+                        const paidDate = new Date(contribution.paid_at)
+                        if (paidDate >= startOfMonth && paidDate <= endOfMonth) {
+                            totalDuesCollected += amount
+                        }
+                    }
+                })
+
+                // Check if member has pending/overdue payments
+                const totalPaid = contributions.reduce((sum, c) => sum + Number(c.amount), 0)
+                const amountDue = Number(em.amount_due) || 0
+
+                if (totalPaid < amountDue) {
+                    pendingAmount += (amountDue - totalPaid)
+
+                    // Check if overdue (past deadline)
+                    if (event.deadline && new Date(event.deadline) < now) {
+                        overdueMembers++
+                    }
+                }
+            })
+        })
+
+        // Get active events count (already calculated above)
+        // Get overdue members (already calculated above)
+
+        // Calculate changes (for comparison with previous month)
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0)
+
+        let lastMonthCollected = 0
+        // Get contributions from last month
+        const lastMonthContributions = await prisma.contribution.findMany({
+            where: {
+                tenant_id: tenant.tenant_id,
+                paid_at: {
+                    gte: startOfLastMonth,
+                    lte: endOfLastMonth
+                }
+            }
+        })
+        lastMonthCollected = lastMonthContributions.reduce((sum, c) => sum + Number(c.amount), 0)
+
+        // Calculate percentage changes
+        const duesCollectedChange = lastMonthCollected > 0 
+            ? `${((totalDuesCollected - lastMonthCollected) / lastMonthCollected * 100).toFixed(1)}%`
+            : '+0%'
+
+        // Get pending amount from last month
+        const lastMonthPending = await prisma.eventMember.count({
+            where: {
+                event: {
+                    tenant_id: tenant.tenant_id
+                },
+                status: 'pending'
+            }
+        })
+
+        const pendingAmountChange = lastMonthPending > 0 
+            ? `${((pendingAmount - lastMonthPending) / lastMonthPending * 100).toFixed(1)}%`
+            : '+0%'
+
+        // Get recent activities
+        const recentActivities = await prisma.auditLog.findMany({
+            where: {
+                tenant_id: tenant.tenant_id
+            },
+            orderBy: {
+                created_at: 'desc'
+            },
+            take: 5,
+            include: {
+                user: true
+            }
+        })
+
+        // Format recent activities
+        const formattedActivities = recentActivities.map(log => {
+            let type = 'other'
+            let description = log.action || 'Activity'
+            let amount = undefined
+            let status = 'success'
+
+            if (log.action?.toLowerCase().includes('payment') || log.action?.toLowerCase().includes('contribution')) {
+                type = 'payment'
+                if (log.details && typeof log.details === 'object') {
+                    amount = log.details.amount || undefined
+                    status = log.details.status || 'success'
+                }
+            } else if (log.action?.toLowerCase().includes('event')) {
+                type = 'event'
+            } else if (log.action?.toLowerCase().includes('member')) {
+                type = 'member'
+            }
+
+            return {
+                id: log.log_id,
+                type,
+                description: log.action || 'Activity',
+                amount,
+                date: log.created_at,
+                status: status as 'success' | 'pending' | 'failed'
+            }
+        })
 
         const stats = {
-            totalTenants: user.memberships.length,
-            totalEvents,
-            totalContributions,
-            pendingPayments,
-            memberships: user.memberships.map(m => ({
-                tenantId: m.tenant_id,
-                tenantName: m.tenant.name,
-                role: m.role,
-                joinedAt: m.joined_at
-            }))
+            totalDuesCollected: totalDuesCollected,
+            totalDuesCollectedAllTime: totalDuesCollectedAllTime,
+            pendingAmount: pendingAmount,
+            activeEvents: activeEvents,
+            overdueMembers: overdueMembers,
+            duesCollectedChange: duesCollectedChange,
+            pendingAmountChange: pendingAmountChange,
+            activeEventsChange: `+${activeEvents}`,
+            overdueMembersChange: overdueMembers > 0 ? `+${overdueMembers}` : '0'
         }
 
         return {
             success: true,
             message: "Dashboard stats fetched successfully",
-            data: stats
+            data: {
+                tenant: {
+                    id: tenant.tenant_id,
+                    name: tenant.name,
+                    subdomain: tenant.subdomain
+                },
+                stats: stats,
+                recentActivities: formattedActivities
+            }
         }
 
     } catch (error: any) {
