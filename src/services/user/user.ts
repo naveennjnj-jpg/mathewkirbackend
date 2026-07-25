@@ -567,6 +567,7 @@ export const forgotPasswordService = async (payload: ForgotPasswordPayload) => {
             }
         }
 
+        // Generate reset token
         const resetToken = jwt.sign(
             { id: user.user_id },
             process.env.JWT_SECRET as string,
@@ -576,17 +577,19 @@ export const forgotPasswordService = async (payload: ForgotPasswordPayload) => {
         const tokenExpiry = new Date()
         tokenExpiry.setHours(tokenExpiry.getHours() + 1)
 
-        // Save token to database
-        await prisma.user.update({
-            where: { user_id: user.user_id },
+        // Save token to database using PasswordResetToken model
+        await prisma.passwordResetToken.create({
             data: {
-                reset_token: resetToken,
-                reset_token_expires: tokenExpiry
+                token: resetToken,
+                user_id: user.user_id,
+                expires_at: tokenExpiry,
+                // otp: optional, if you're using OTP as well
+                // used: false // This is the default value
             }
         })
 
         const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`
-        await sendPasswordResetEmail(email, resetLink)
+        // await sendPasswordResetEmail(email, resetLink)
 
         return {
             success: true,
@@ -635,18 +638,42 @@ export const verifyPasswordResetService = async (payload: VerifyPasswordResetPay
             }
         }
 
-        // Verify JWT token
-        let decoded
-        try {
-            decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload
-        } catch (error) {
-            if (error instanceof jwt.TokenExpiredError) {
+        // First, find the password reset token in the database
+        const resetToken = await prisma.passwordResetToken.findFirst({
+            where: {
+                token: token,
+                expires_at: {
+                    gt: new Date() // Only valid if not expired
+                }
+            },
+            include: {
+                user: true
+            }
+        })
+
+        if (!resetToken) {
+            // Check if token exists but is expired
+            const expiredToken = await prisma.passwordResetToken.findFirst({
+                where: {
+                    token: token,
+                    expires_at: {
+                        lte: new Date()
+                    }
+                }
+            })
+
+            if (expiredToken) {
+                // Delete expired token
+                await prisma.passwordResetToken.delete({
+                    where: { id: expiredToken.id }
+                })
                 return {
                     success: false,
                     message: "Reset link has expired. Please request a new one.",
                     code: httpStatusCode.BAD_REQUEST
                 }
             }
+
             return {
                 success: false,
                 message: "Invalid reset link. Please request a new one.",
@@ -654,10 +681,7 @@ export const verifyPasswordResetService = async (payload: VerifyPasswordResetPay
             }
         }
 
-        // Find user by ID from token
-        const user = await prisma.user.findUnique({
-            where: { user_id: decoded.id }
-        })
+        const user = resetToken.user
 
         if (!user) {
             return {
@@ -670,13 +694,28 @@ export const verifyPasswordResetService = async (payload: VerifyPasswordResetPay
         // Hash new password
         const hashedPassword = await hashPassword(newPassword)
 
-        // Update user password
-        await prisma.user.update({
-            where: { user_id: user.user_id },
-            data: {
-                password_hash: hashedPassword,
-                reset_token: null,
-                reset_token_expires: null
+        // Update user password in a transaction
+        await prisma.$transaction([
+            // Update user password
+            prisma.user.update({
+                where: { user_id: user.user_id },
+                data: {
+                    password_hash: hashedPassword
+                }
+            }),
+            // Delete the used reset token
+            prisma.passwordResetToken.delete({
+                where: { id: resetToken.id }
+            })
+        ])
+
+        // Optional: Delete all other reset tokens for this user (for security)
+        await prisma.passwordResetToken.deleteMany({
+            where: {
+                user_id: user.user_id,
+                NOT: {
+                    id: resetToken.id
+                }
             }
         })
 
