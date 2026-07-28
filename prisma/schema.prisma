@@ -216,3 +216,19 @@ model PasswordResetToken {
   @@index([user_id])
   @@map("password_reset_tokens")
 }
+
+model PlatformSetting {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  user_id           String   @db.Uuid
+
+  platform_name     String   @db.VarChar(255)
+  platform_logo     String?  @db.VarChar(500)
+  default_language  String   @default("English") @db.VarChar(100)
+  time_zone         String   @default("UTC") @db.VarChar(100)
+
+  created_at        DateTime @default(now()) @db.Timestamp(6)
+  updated_at        DateTime @updatedAt @db.Timestamp(6)
+
+  @@map("platform_settings")
+}

@@ -392,177 +392,165 @@ export const createTenantService = async (req: Request) => {
 /**
  * Update tenant
  */
-export const updateTenantService = async (payload: { id: string; userId: string; body: any }) => {
+export const updateTenantService = async (payload: {
+    id: string;
+    userId: string;
+    body: any;
+}) => {
     try {
-        const { id, userId, body } = payload
-        const { name, subdomain, treasurerEmail, status } = body
+        const { id, userId, body } = payload;
+        const { name, subdomain, treasurerEmail, status } = body;
 
         const existingTenant = await prisma.tenant.findUnique({
             where: { tenant_id: id },
             include: {
                 memberships: {
                     where: {
-                        role: 'treasurer'
+                        role: "treasurer",
                     },
                     include: {
-                        user: true
-                    }
-                }
-            }
-        })
+                        user: true,
+                    },
+                },
+            },
+        });
 
         if (!existingTenant) {
             return {
                 success: false,
                 message: "Tenant not found",
-                code: httpStatusCode.NOT_FOUND
-            }
+                code: httpStatusCode.NOT_FOUND,
+            };
         }
 
-        if (subdomain && subdomain !== existingTenant.subdomain) {
+        // Check if subdomain already exists
+        if (
+            subdomain &&
+            subdomain.toLowerCase() !== existingTenant.subdomain
+        ) {
             const subdomainExists = await prisma.tenant.findFirst({
                 where: {
                     subdomain: subdomain.toLowerCase(),
-                    tenant_id: { not: id }
-                }
-            })
+                    tenant_id: {
+                        not: id,
+                    },
+                },
+            });
 
             if (subdomainExists) {
                 return {
                     success: false,
                     message: "Subdomain already taken. Please choose another.",
-                    code: httpStatusCode.BAD_REQUEST
-                }
+                    code: httpStatusCode.BAD_REQUEST,
+                };
             }
         }
 
-        const updateData: any = {}
-        if (name) updateData.name = name
-        if (subdomain) updateData.subdomain = subdomain.toLowerCase()
-        if (status) updateData.status = status
+        // Update tenant details
+        const updateData: any = {};
 
-        let tenant = existingTenant
-        if (Object.keys(updateData).length > 0) {
-            tenant = await prisma.tenant.update({
-                where: { tenant_id: id },
-                data: updateData
-            })
-        }
+        if (name !== undefined) updateData.name = name;
+        if (subdomain !== undefined)
+            updateData.subdomain = subdomain.toLowerCase();
+        if (status !== undefined) updateData.status = status;
 
+        await prisma.tenant.update({
+            where: {
+                tenant_id: id,
+            },
+            data: updateData,
+        });
+
+        // Update existing treasurer email only
         if (treasurerEmail) {
-            const currentTreasurer = existingTenant.memberships[0]
+            const currentTreasurer = existingTenant.memberships[0];
 
-            if (currentTreasurer?.user?.email !== treasurerEmail) {
-                let newTreasurer = await prisma.user.findUnique({
-                    where: { email: treasurerEmail }
-                })
-
-                if (!newTreasurer) {
-                    const tempPassword = generateNumericOTP(8)
-                    const hashedPassword = await hashPassword(tempPassword)
-
-                    newTreasurer = await prisma.user.create({
-                        data: {
-                            email: treasurerEmail,
-                            full_name: 'Treasurer',
-                            password_hash: hashedPassword,
-                            created_at: new Date()
-                        }
-                    })
-
-                    console.log(`Temporary password for ${treasurerEmail}: ${tempPassword}`)
-                }
-
-                if (currentTreasurer) {
-                    await prisma.membership.update({
-                        where: { membership_id: currentTreasurer.membership_id },
-                        data: {
-                            user_id: newTreasurer.user_id,
-                            status: 'active'
-                        }
-                    })
-                } else {
-                    await prisma.membership.create({
-                        data: {
-                            tenant_id: id,
-                            user_id: newTreasurer.user_id,
-                            role: 'treasurer',
-                            status: 'active',
-                            joined_at: new Date()
-                        }
-                    })
-                }
+            if (currentTreasurer?.user) {
+                await prisma.user.update({
+                    where: {
+                        user_id: currentTreasurer.user.user_id,
+                    },
+                    data: {
+                        email: treasurerEmail,
+                    },
+                });
             }
         }
 
+        // Audit log
         if (userId) {
             await prisma.auditLog.create({
                 data: {
                     tenant_id: id,
                     user_id: userId,
-                    action: 'TENANT_UPDATED',
-                    entity_type: 'tenant',
+                    action: "TENANT_UPDATED",
+                    entity_type: "tenant",
                     entity_id: id,
                     details: {
                         name,
                         subdomain,
                         status,
-                        treasurerEmail
+                        treasurerEmail,
                     },
-                    created_at: new Date()
-                }
-            })
+                    created_at: new Date(),
+                },
+            });
         }
 
+        // Return updated tenant
         const updatedTenant = await prisma.tenant.findUnique({
-            where: { tenant_id: id },
+            where: {
+                tenant_id: id,
+            },
             include: {
                 memberships: {
+                    where: {
+                        role: "treasurer",
+                    },
                     include: {
                         user: {
                             select: {
                                 user_id: true,
+                                full_name: true,
                                 email: true,
-                                full_name: true
-                            }
-                        }
-                    }
-                }
-            }
-        })
+                            },
+                        },
+                    },
+                },
+            },
+        });
 
         return {
             success: true,
             message: "Tenant updated successfully",
-            data: updatedTenant || tenant
-        }
-
+            data: updatedTenant,
+        };
     } catch (error: any) {
-        console.error("Update tenant error:", error)
+        console.error("Update tenant error:", error);
 
-        if (error.code === 'P2025') {
+        if (error.code === "P2025") {
             return {
                 success: false,
                 message: "Tenant not found",
-                code: httpStatusCode.NOT_FOUND
-            }
+                code: httpStatusCode.NOT_FOUND,
+            };
         }
 
-        if (error.code === 'P2002') {
+        if (error.code === "P2002") {
             return {
                 success: false,
-                message: "Subdomain already exists. Please choose another.",
-                code: httpStatusCode.BAD_REQUEST
-            }
+                message: "Subdomain already exists.",
+                code: httpStatusCode.BAD_REQUEST,
+            };
         }
 
         return {
             success: false,
             message: error.message || "Failed to update tenant",
-            code: httpStatusCode.INTERNAL_SERVER_ERROR
-        }
+            code: httpStatusCode.INTERNAL_SERVER_ERROR,
+        };
     }
-}
+};
 
 /**
  * Update tenant status
@@ -630,19 +618,46 @@ export const updateTenantStatusService = async (payload: { id: string; userId: s
 }
 
 /**
- * Delete tenant (force delete - removes all related data using cascade)
+ * Delete tenant (soft delete with proper user handling)
  */
 export const deleteTenantService = async (payload: { id: string; userId: string }) => {
     try {
         const { id, userId } = payload
 
+        // 1. Get tenant with all related data
         const tenant = await prisma.tenant.findUnique({
             where: { tenant_id: id },
-            select: {
-                tenant_id: true,
-                name: true,
-                subdomain: true,
-                status: true
+            include: {
+                memberships: {
+                    include: {
+                        user: {
+                            select: {
+                                user_id: true,
+                                email: true,
+                                full_name: true
+                            }
+                        }
+                    }
+                },
+                beneficiaries: {
+                    include: {
+                        fundraising_events: true,
+                        payouts: true
+                    }
+                },
+                fundraising_events: {
+                    include: {
+                        event_members: {
+                            include: {
+                                contributions: true
+                            }
+                        }
+                    }
+                },
+                contributions: true,
+                payouts: true,
+                notifications: true,
+                audit_logs: true
             }
         })
 
@@ -654,6 +669,7 @@ export const deleteTenantService = async (payload: { id: string; userId: string 
             }
         }
 
+        // 2. Log the deletion
         if (userId) {
             await prisma.auditLog.create({
                 data: {
@@ -666,13 +682,101 @@ export const deleteTenantService = async (payload: { id: string; userId: string 
                         name: tenant.name,
                         subdomain: tenant.subdomain,
                         status: tenant.status,
-                        deletedAt: new Date().toISOString()
+                        deletedAt: new Date().toISOString(),
+                        totalMembers: tenant.memberships.length,
+                        totalBeneficiaries: tenant.beneficiaries.length,
+                        totalEvents: tenant.fundraising_events.length
                     },
                     created_at: new Date()
                 }
             })
         }
 
+        // 3. Get all user IDs from this tenant
+        const userIds = tenant.memberships.map(m => m.user_id)
+
+        // 4. Delete tenant-specific data (cascade will handle most)
+        //    But we need to handle Users carefully
+        
+        // Step 4a: Delete audit logs for this tenant
+        await prisma.auditLog.deleteMany({
+            where: { tenant_id: id }
+        })
+
+        // Step 4b: Delete notifications for this tenant
+        await prisma.notification.deleteMany({
+            where: { tenant_id: id }
+        })
+
+        // Step 4c: Delete contributions (cascade from event_members)
+        await prisma.contribution.deleteMany({
+            where: { tenant_id: id }
+        })
+
+        // Step 4d: Delete payouts
+        await prisma.payout.deleteMany({
+            where: { tenant_id: id }
+        })
+
+        // Step 4e: Delete event members (cascade will handle events)
+        // But we need to delete events first
+        await prisma.fundraisingEvent.deleteMany({
+            where: { tenant_id: id }
+        })
+
+        // Step 4f: Delete beneficiaries
+        await prisma.beneficiary.deleteMany({
+            where: { tenant_id: id }
+        })
+
+        // Step 4g: Delete memberships for this tenant
+        await prisma.membership.deleteMany({
+            where: { tenant_id: id }
+        })
+
+        // Step 5: Handle orphaned users
+        // Users who were ONLY in this tenant should be deleted
+        // Users who are in other tenants should be preserved
+        for (const userId of userIds) {
+            const remainingMemberships = await prisma.membership.count({
+                where: {
+                    user_id: userId,
+                    tenant_id: { not: id } // Exclude current tenant
+                }
+            })
+
+            // If user has no other memberships, delete the user
+            if (remainingMemberships === 0) {
+                // Check if user has any other data (audit logs, etc.)
+                const userAuditLogs = await prisma.auditLog.count({
+                    where: {
+                        user_id: userId,
+                        tenant_id: { not: id }
+                    }
+                })
+
+                const userNotifications = await prisma.notification.count({
+                    where: {
+                        user_id: userId,
+                        tenant_id: { not: id }
+                    }
+                })
+
+                // Only delete if user has no other data in the system
+                if (userAuditLogs === 0 && userNotifications === 0) {
+                    await prisma.user.delete({
+                        where: { user_id: userId }
+                    })
+                    console.log(`✅ User ${userId} deleted (no other tenants)`);
+                } else {
+                    console.log(`⚠️ User ${userId} preserved (has data in other tenants)`);
+                }
+            } else {
+                console.log(`ℹ️ User ${userId} preserved (member of ${remainingMemberships} other tenants)`);
+            }
+        }
+
+        // Step 6: Finally delete the tenant
         await prisma.tenant.delete({
             where: { tenant_id: id }
         })
@@ -683,7 +787,9 @@ export const deleteTenantService = async (payload: { id: string; userId: string 
             data: {
                 id: tenant.tenant_id,
                 name: tenant.name,
-                subdomain: tenant.subdomain
+                subdomain: tenant.subdomain,
+                deletedUsers: userIds.length,
+                preservedUsers: userIds.length // Users that remain in system
             }
         }
 

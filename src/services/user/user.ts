@@ -59,83 +59,19 @@ interface VerifyPasswordResetPayload {
     newPassword: string
     confirmPassword: string
 }
+interface UpdatePlatformSettingPayload {
+    userId: string;
+    body: {
+        platform_name: string;
+        platform_logo?: string;
+        default_language: string;
+        time_zone: string;
+    };
+}
 
 // ============================================
 // AUTH SERVICES
 // ============================================
-
-/**
- * Signup Service
- */
-export const signupService = async (payload: SignupPayload) => {
-    try {
-        const { email, password, fullName, phoneNumber } = payload
-        const normalizedEmail = email.toLowerCase().trim()
-
-        // Validate password length
-        if (!password || password.length < 8) {
-            return {
-                success: false,
-                message: "Password must be at least 8 characters",
-                code: httpStatusCode.BAD_REQUEST
-            }
-        }
-
-        // Check if email exists
-        const existingUser = await prisma.user.findUnique({
-            where: { email: normalizedEmail }
-        })
-
-        if (existingUser) {
-            return {
-                success: false,
-                message: "Email already exists",
-                code: httpStatusCode.BAD_REQUEST
-            }
-        }
-
-        // Hash password
-        const hashedPassword = await hashPassword(password)
-
-        // Create user
-        const user = await prisma.user.create({
-            data: {
-                email: normalizedEmail,
-                password_hash: hashedPassword,
-                full_name: fullName || null,
-                phone: phoneNumber || null,
-                created_at: new Date()
-            }
-        })
-
-        // Generate token
-        const token = generateAuthToken({
-            id: user.user_id,
-            email: user.email,
-            role: 'user'
-        })
-
-        // Remove sensitive data
-        const { password_hash, reset_token, reset_token_expires, reset_otp, reset_otp_expires, ...userData } = user
-
-        return {
-            success: true,
-            message: "User signup successful",
-            data: {
-                user: userData
-            },
-            token
-        }
-
-    } catch (error: any) {
-        console.error("Signup error:", error)
-        return {
-            success: false,
-            message: error.message || "Failed to create user",
-            code: httpStatusCode.INTERNAL_SERVER_ERROR
-        }
-    }
-}
 
 /**
  * Login Service
@@ -162,7 +98,7 @@ export const loginService = async (payload: LoginPayload) => {
         if (!user) {
             return {
                 success: false,
-                message: "Invalid credentials",
+                message: "user not found",
                 code: httpStatusCode.UNAUTHORIZED
             }
         }
@@ -172,7 +108,7 @@ export const loginService = async (payload: LoginPayload) => {
         if (!isValidPassword) {
             return {
                 success: false,
-                message: "Invalid credentials",
+                message: "Invalid password",
                 code: httpStatusCode.UNAUTHORIZED
             }
         }
@@ -365,181 +301,7 @@ export const forgotPasswordOTPService = async (payload: ForgotPasswordPayload) =
     }
 }
 
-/**
- * Verify OTP Service
- */
-export const verifyOTPService = async (payload: VerifyOTPPayload) => {
-    try {
-        const { email, otp } = payload
-        const normalizedEmail = email.toLowerCase().trim()
 
-        const user = await prisma.user.findUnique({
-            where: { email: normalizedEmail }
-        })
-
-        if (!user) {
-            return {
-                success: false,
-                message: "User not found",
-                code: httpStatusCode.NOT_FOUND
-            }
-        }
-
-        // Check if OTP exists
-        if (!user.reset_otp || !user.reset_otp_expires) {
-            return {
-                success: false,
-                message: "No OTP found. Please request a new one.",
-                code: httpStatusCode.BAD_REQUEST
-            }
-        }
-
-        // Check if OTP is expired
-        if (new Date() > user.reset_otp_expires) {
-            return {
-                success: false,
-                message: "OTP has expired. Please request a new one.",
-                code: httpStatusCode.BAD_REQUEST
-            }
-        }
-
-        // Verify OTP
-        if (user.reset_otp !== otp) {
-            return {
-                success: false,
-                message: "Invalid OTP",
-                code: httpStatusCode.BAD_REQUEST
-            }
-        }
-
-        // Generate reset token for password reset
-        const resetToken = generateAuthToken(
-            { id: user.user_id },
-            "15m"
-        )
-
-        // Clear OTP after verification
-        await prisma.user.update({
-            where: { user_id: user.user_id },
-            data: {
-                reset_otp: null,
-                reset_otp_expires: null
-            }
-        })
-
-        return {
-            success: true,
-            message: "OTP verified successfully",
-            data: {
-                reset_token: resetToken
-            }
-        }
-
-    } catch (error: any) {
-        console.error("Verify OTP error:", error)
-        return {
-            success: false,
-            message: error.message || "Failed to verify OTP",
-            code: httpStatusCode.INTERNAL_SERVER_ERROR
-        }
-    }
-}
-
-/**
- * Reset Password with OTP Service
- */
-export const resetPasswordWithOTPService = async (payload: ResetPasswordWithOTPPayload) => {
-    try {
-        const { email, otp, newPassword, confirmPassword } = payload
-
-        // Validate input
-        if (!email || !otp || !newPassword) {
-            return {
-                success: false,
-                message: "Email, OTP, and new password are required",
-                code: httpStatusCode.BAD_REQUEST
-            }
-        }
-
-        if (newPassword !== confirmPassword) {
-            return {
-                success: false,
-                message: "Passwords do not match",
-                code: httpStatusCode.BAD_REQUEST
-            }
-        }
-
-        if (newPassword.length < 8) {
-            return {
-                success: false,
-                message: "Password must be at least 8 characters",
-                code: httpStatusCode.BAD_REQUEST
-            }
-        }
-
-        const normalizedEmail = email.toLowerCase().trim()
-        const user = await prisma.user.findUnique({
-            where: { email: normalizedEmail }
-        })
-
-        if (!user) {
-            return {
-                success: false,
-                message: "User not found",
-                code: httpStatusCode.NOT_FOUND
-            }
-        }
-
-        // Check OTP
-        if (!user.reset_otp || !user.reset_otp_expires) {
-            return {
-                success: false,
-                message: "No OTP found. Please request a new one.",
-                code: httpStatusCode.BAD_REQUEST
-            }
-        }
-
-        if (new Date() > user.reset_otp_expires) {
-            return {
-                success: false,
-                message: "OTP has expired. Please request a new one.",
-                code: httpStatusCode.BAD_REQUEST
-            }
-        }
-
-        if (user.reset_otp !== otp) {
-            return {
-                success: false,
-                message: "Invalid OTP",
-                code: httpStatusCode.BAD_REQUEST
-            }
-        }
-
-        // Hash new password and update
-        const hashedPassword = await hashPassword(newPassword)
-        await prisma.user.update({
-            where: { user_id: user.user_id },
-            data: {
-                password_hash: hashedPassword,
-                reset_otp: null,
-                reset_otp_expires: null
-            }
-        })
-
-        return {
-            success: true,
-            message: "Password reset successful. Please login with your new password."
-        }
-
-    } catch (error: any) {
-        console.error("Reset password error:", error)
-        return {
-            success: false,
-            message: error.message || "Failed to reset password",
-            code: httpStatusCode.INTERNAL_SERVER_ERROR
-        }
-    }
-}
 
 // ============================================
 // PASSWORD RESET SERVICES - TOKEN FLOW (LEGACY)
@@ -734,163 +496,9 @@ export const verifyPasswordResetService = async (payload: VerifyPasswordResetPay
     }
 }
 
-// ============================================
-// USER MANAGEMENT SERVICES
-// ============================================
 
-/**
- * Get User Info Service
- */
-export const getUserInfoService = async (userId: string) => {
-    try {
-        const user = await prisma.user.findUnique({
-            where: { user_id: userId },
-            include: {
-                memberships: {
-                    include: {
-                        tenant: true
-                    }
-                }
-            }
-        })
 
-        if (!user) {
-            return {
-                success: false,
-                message: "User not found",
-                code: httpStatusCode.NOT_FOUND
-            }
-        }
 
-        const { password_hash, reset_token, reset_token_expires, reset_otp, reset_otp_expires, ...userData } = user
-
-        return {
-            success: true,
-            message: "User data fetched successfully",
-            data: userData
-        }
-
-    } catch (error: any) {
-        console.error("Get user info error:", error)
-        return {
-            success: false,
-            message: error.message || "Failed to fetch user data",
-            code: httpStatusCode.INTERNAL_SERVER_ERROR
-        }
-    }
-}
-
-/**
- * Update User Service
- */
-export const updateAUserService = async (payload: UpdateUserPayload) => {
-    try {
-        const { userId, body } = payload
-
-        const user = await prisma.user.findUnique({
-            where: { user_id: userId }
-        })
-
-        if (!user) {
-            return {
-                success: false,
-                message: "User not found",
-                code: httpStatusCode.NOT_FOUND
-            }
-        }
-
-        // Prepare update data
-        const updateData: any = {}
-
-        if (body.fullName || body.full_name) {
-            updateData.full_name = body.fullName || body.full_name
-        }
-
-        if (body.phoneNumber || body.phone) {
-            updateData.phone = body.phoneNumber || body.phone
-        }
-
-        if (body.email) {
-            // Check if email already exists for another user
-            const existingEmail = await prisma.user.findFirst({
-                where: {
-                    email: body.email.toLowerCase().trim(),
-                    user_id: { not: userId }
-                }
-            })
-
-            if (existingEmail) {
-                return {
-                    success: false,
-                    message: "Email already exists",
-                    code: httpStatusCode.BAD_REQUEST
-                }
-            }
-            updateData.email = body.email.toLowerCase().trim()
-        }
-
-        // Update user
-        const updatedUser = await prisma.user.update({
-            where: { user_id: userId },
-            data: updateData
-        })
-
-        const { password_hash, reset_token, reset_token_expires, reset_otp, reset_otp_expires, ...userData } = updatedUser
-
-        return {
-            success: true,
-            message: "User updated successfully",
-            data: {
-                user: userData
-            }
-        }
-
-    } catch (error: any) {
-        console.error("Update user error:", error)
-        return {
-            success: false,
-            message: error.message || "Failed to update user",
-            code: httpStatusCode.INTERNAL_SERVER_ERROR
-        }
-    }
-}
-
-/**
- * Delete User Service
- */
-export const deleteAUserService = async (userId: string) => {
-    try {
-        const user = await prisma.user.findUnique({
-            where: { user_id: userId }
-        })
-
-        if (!user) {
-            return {
-                success: false,
-                message: "User not found",
-                code: httpStatusCode.NOT_FOUND
-            }
-        }
-
-        // Delete user (cascading will handle related records)
-        await prisma.user.delete({
-            where: { user_id: userId }
-        })
-
-        return {
-            success: true,
-            message: "User deleted successfully"
-        }
-
-    } catch (error: any) {
-        console.error("Delete user error:", error)
-        return {
-            success: false,
-            message: error.message || "Failed to delete user",
-            code: httpStatusCode.INTERNAL_SERVER_ERROR
-        }
-    }
-}
 
 /**
  * Update Password Service
@@ -909,13 +517,6 @@ export const updateAPasswordService = async (payload: UpdatePasswordPayload) => 
             }
         }
 
-        if (newPassword !== confirmPassword) {
-            return {
-                success: false,
-                message: "Passwords do not match",
-                code: httpStatusCode.BAD_REQUEST
-            }
-        }
 
         if (newPassword.length < 8) {
             return {
@@ -976,11 +577,6 @@ export const updateAPasswordService = async (payload: UpdatePasswordPayload) => 
 // ============================================
 // DASHBOARD SERVICE
 // ============================================
-
-/**
- * Get Dashboard Stats Service
- */
-// services/admin/tenant/tenant.ts or services/treasurer/dashboard.ts
 
 /**
  * Get Dashboard Stats Service for Treasurer
@@ -1083,7 +679,7 @@ export const getDashboardStatsService = async (req: Request) => {
 
             eventMembers.forEach(em => {
                 const contributions = em.contributions || []
-                
+
                 // Calculate total contributions (all time)
                 contributions.forEach(contribution => {
                     const amount = Number(contribution.amount) || 0
@@ -1134,7 +730,7 @@ export const getDashboardStatsService = async (req: Request) => {
         lastMonthCollected = lastMonthContributions.reduce((sum, c) => sum + Number(c.amount), 0)
 
         // Calculate percentage changes
-        const duesCollectedChange = lastMonthCollected > 0 
+        const duesCollectedChange = lastMonthCollected > 0
             ? `${((totalDuesCollected - lastMonthCollected) / lastMonthCollected * 100).toFixed(1)}%`
             : '+0%'
 
@@ -1148,7 +744,7 @@ export const getDashboardStatsService = async (req: Request) => {
             }
         })
 
-        const pendingAmountChange = lastMonthPending > 0 
+        const pendingAmountChange = lastMonthPending > 0
             ? `${((pendingAmount - lastMonthPending) / lastMonthPending * 100).toFixed(1)}%`
             : '+0%'
 
@@ -1175,9 +771,14 @@ export const getDashboardStatsService = async (req: Request) => {
 
             if (log.action?.toLowerCase().includes('payment') || log.action?.toLowerCase().includes('contribution')) {
                 type = 'payment'
-                if (log.details && typeof log.details === 'object') {
-                    amount = log.details.amount || undefined
-                    status = log.details.status || 'success'
+                if (log.details && typeof log.details === "object" && !Array.isArray(log.details)) {
+                    const details = log.details as {
+                        amount?: number;
+                        status?: string;
+                    };
+
+                    amount = details.amount;
+                    status = details.status || "success";
                 }
             } else if (log.action?.toLowerCase().includes('event')) {
                 type = 'event'
@@ -1230,3 +831,163 @@ export const getDashboardStatsService = async (req: Request) => {
         }
     }
 }
+
+
+export const getPlatformSettingService = async (req: Request) => {
+    try {
+        const userId = (req as any).currentUser;
+
+        console.log("userId", userId);
+
+        const settings = await prisma.platformSetting.findFirst({
+            where: {
+                user_id: userId,
+            },
+        });
+
+        if (!settings) {
+            return {
+                success: false,
+                message: "Platform settings data is not available",
+                code: httpStatusCode.NOT_FOUND,
+            };
+        }
+
+        return {
+            success: true,
+            message: "Platform settings fetched successfully",
+            data: settings,
+        };
+    } catch (error: any) {
+        console.error("Get platform settings error:", error);
+
+        return {
+            success: false,
+            message: error.message || "Failed to fetch platform settings",
+            code: httpStatusCode.INTERNAL_SERVER_ERROR,
+        };
+    }
+};
+
+
+export const updatePlatformSettingService = async (
+    payload: UpdatePlatformSettingPayload
+) => {
+    try {
+        const { userId, body } = payload;
+
+        const {
+            platform_name,
+            platform_logo,
+            default_language,
+            time_zone,
+        } = body;
+
+        if (!platform_name?.trim()) {
+            return {
+                success: false,
+                message: "Platform name is required",
+                code: httpStatusCode.BAD_REQUEST,
+            };
+        }
+
+        let settings = await prisma.platformSetting.findFirst({
+            where: {
+                user_id: userId,
+            },
+        });
+
+        if (!settings) {
+            settings = await prisma.platformSetting.create({
+                data: {
+                    user_id: userId,
+                    platform_name: platform_name.trim(),
+                    platform_logo: platform_logo || null,
+                    default_language,
+                    time_zone,
+                },
+            });
+        } else {
+            settings = await prisma.platformSetting.update({
+                where: {
+                    id: settings.id,
+                },
+                data: {
+                    platform_name: platform_name.trim(),
+                    platform_logo: platform_logo || null,
+                    default_language,
+                    time_zone,
+                },
+            });
+        }
+
+        return {
+            success: true,
+            message: "Platform settings updated successfully",
+            data: settings,
+        };
+    } catch (error: any) {
+        console.error("Update platform settings error:", error);
+
+        return {
+            success: false,
+            message: error.message || "Failed to update platform settings",
+            code: httpStatusCode.INTERNAL_SERVER_ERROR,
+        };
+    }
+};
+
+export const getTenantDomainDataService = async (subdomain: string) => {
+    try {
+        const tenant = await prisma.tenant.findFirst({
+            where: {
+                subdomain: subdomain.toLowerCase(),
+            },
+            include: {
+                memberships: {
+                    where: {
+                        role: "treasurer",
+                    },
+                    select: {
+                        user_id: true,
+                    },
+                    take: 1,
+                },
+            },
+        });
+
+        if (!tenant) {
+            return {
+                success: false,
+                message: "Tenant not found",
+                code: 404,
+            };
+        }
+
+        const userId = tenant.memberships[0]?.user_id;
+
+        let settings = null;
+
+        if (userId) {
+            settings = await prisma.platformSetting.findFirst({
+                where: {
+                    user_id: userId,
+                },
+            });
+        }
+
+        return {
+            success: true,
+            data: {
+                tenant,
+                settings,
+            },
+        };
+    } catch (error: any) {
+        return {
+            success: false,
+            message: error.message,
+            code: 500,
+        };
+    }
+};

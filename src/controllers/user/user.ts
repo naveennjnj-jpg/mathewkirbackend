@@ -6,44 +6,18 @@ import { clientSignupSchema, passswordResetSchema } from "../../validation/clien
 import { formatZodErrors } from "../../validation/format-zod-errors"
 import { 
     loginService, 
-    signupService,
     userdataServive, 
     forgotPasswordService, 
     verifyPasswordResetService,
-    deleteAUserService,
     getDashboardStatsService, 
-    getUserInfoService, 
-    updateAUserService, 
-    updateAPasswordService 
+    updateAPasswordService,
+    getPlatformSettingService,
+    updatePlatformSettingService,
+    getTenantDomainDataService
 } from "../../services/user/user"
 import { z } from "zod"
 import mongoose from "mongoose"
 
-export const signup = async (req: Request, res: Response) => {
-    try {
-        const result = await signupService(req.body)
-        
-        if (!result.success) {
-            return res.status(result.code || httpStatusCode.BAD_REQUEST).json({
-                success: false,
-                message: result.message
-            })
-        }
-
-        return res.status(httpStatusCode.CREATED).json({
-            success: true,
-            message: result.message,
-            data: result.data,
-            token: result.token
-        })
-    } catch (error: any) {
-        const { code, message } = errorParser(error)
-        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({ 
-            success: false, 
-            message: message || "An error occurred" 
-        })
-    }
-}
 
 export const userdata = async (req: Request, res: Response) => {
     try {
@@ -145,82 +119,6 @@ export const verifyPasswordReset = async (req: Request, res: Response) => {
     }
 }
 
-export const getUserInfo = async (req: Request, res: Response) => {
-    try {
-        const result = await getUserInfoService(req.params.id)
-        
-        if (!result.success) {
-            return res.status(result.code || httpStatusCode.NOT_FOUND).json({
-                success: false,
-                message: result.message
-            })
-        }
-
-        return res.status(httpStatusCode.OK).json({
-            success: true,
-            message: result.message,
-            data: result.data
-        })
-    } catch (error: any) {
-        const { code, message } = errorParser(error)
-        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({ 
-            success: false, 
-            message: message || "An error occurred" 
-        })
-    }
-}
-
-export const updateAUser = async (req: Request, res: Response) => {
-    try {
-        const userId = (req as any).currentUser
-        const result = await updateAUserService({ userId, body: req.body })
-        
-        if (!result.success) {
-            return res.status(result.code || httpStatusCode.BAD_REQUEST).json({
-                success: false,
-                message: result.message
-            })
-        }
-
-        return res.status(httpStatusCode.OK).json({
-            success: true,
-            message: result.message,
-            data: result.data
-        })
-    } catch (error: any) {
-        const { code, message } = errorParser(error)
-        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({ 
-            success: false, 
-            message: message || "An error occurred" 
-        })
-    }
-}
-
-export const deleteAUser = async (req: Request, res: Response) => {
-    try {
-        const userId = (req as any).currentUser
-        const result = await deleteAUserService(userId)
-        
-        if (!result.success) {
-            return res.status(result.code || httpStatusCode.NOT_FOUND).json({
-                success: false,
-                message: result.message
-            })
-        }
-
-        return res.status(httpStatusCode.OK).json({
-            success: true,
-            message: result.message
-        })
-    } catch (error: any) {
-        const { code, message } = errorParser(error)
-        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({ 
-            success: false, 
-            message: message || "An error occurred" 
-        })
-    }
-}
-
 export const updateAPassword = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).currentUser
@@ -255,7 +153,7 @@ export const profileupdate = async (req: Request, res: Response) => {
             })
         }
 
-        const imageUrl = (req.file as any).path
+        const imageUrl = "/" + (req.file as any).path.replace(/^public\//, "");
         const publicId = (req.file as any).filename
 
         return res.status(httpStatusCode.OK).json({
@@ -300,3 +198,73 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         })
     }
 }
+
+export const getPlatformSetting = async (req: Request, res: Response) => {
+    try {
+        const result = await getPlatformSettingService(req)
+        
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.NOT_FOUND).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.OK).json({
+            success: true,
+            message: result.message,
+            data: result.data
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({ 
+            success: false, 
+            message: message || "An error occurred" 
+        })
+    }
+}
+
+export const updatePlatformSetting = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).currentUser
+        const result = await updatePlatformSettingService({ userId, body: req.body })
+        
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.BAD_REQUEST).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.OK).json({
+            success: true,
+            message: result.message
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({ 
+            success: false, 
+            message: message || "An error occurred" 
+        })
+    }
+}
+
+
+export const getTenantDomainData = async (req: Request, res: Response) => {
+  try {
+    const { subdomain } = req.params;
+
+    const result = await getTenantDomainDataService(subdomain);
+
+    if (!result.success) {
+      return res.status(result.code || 404).json(result);
+    }
+
+    return res.status(200).json(result);
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};

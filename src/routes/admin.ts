@@ -26,11 +26,7 @@ import {
   updateUserStatus,
   getUserStats
 } from "../controllers/admin/tenant/user/user";
-import { validateRequest } from "../middleware/validate";
-import { 
-  reconciliationQuerySchema, 
-  transactionDetailSchema 
-} from "../validation/reconciliation";
+
 const router = Router()
 
 // All routes require authentication
@@ -69,4 +65,6 @@ router.patch("/updateuserstatus/:id/status", updateUserStatus);
 
 // DELETE /api/admin/users/deleteuser/:id - Delete user
 router.delete("/deleteuser/:id", deleteUser);
+
+
 export { router }
