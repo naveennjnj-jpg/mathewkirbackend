@@ -126,6 +126,7 @@ model EventMember {
   @@map("event_members")
 }
 
+
 model Contribution {
   contribution_id   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenant_id         String      @db.Uuid
@@ -137,6 +138,8 @@ model Contribution {
   verified_by       String?     @db.Uuid
   paid_at           DateTime?   @db.Timestamp(6)
   created_at        DateTime    @default(now()) @db.Timestamp(6)
+  proof_file        String?     @db.VarChar(500)  // Add this line
+  notes             String?                       // Add this line if not exists
   event_member      EventMember @relation(fields: [event_member_id], references: [event_member_id], onDelete: Cascade)
   tenant            Tenant      @relation(fields: [tenant_id], references: [tenant_id], onDelete: Cascade)
   verifier          User?       @relation("ContributionVerifier", fields: [verified_by], references: [user_id])

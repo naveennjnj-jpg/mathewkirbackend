@@ -1,11 +1,21 @@
 // routes/treasurer.ts
 import { Router } from "express";
-import { getDashboardStats,
+import {
+    getDashboardStats,
     getMembers,
     addMember,
     updateMember,
     deleteMember,
-    importMembers
+    importMembers,
+    getAllPayments,
+    updatePaymentStatus,
+    getPayouts,
+    createPayout,
+    updatePayout,
+    deletePayout,
+    generateReport,
+    exportReport,
+    getAnalyticsStat
 } from "../controllers/treasurer/treasurer";
 
 import {
@@ -28,6 +38,9 @@ router.use(checkAuth);
 // Dashboard
 router.get("/dashboard", getDashboardStats)
 
+
+router.get("/analytics", getAnalyticsStat)
+
 // Members Management
 router.get("/members", getMembers)
 router.post("/members", addMember)
@@ -46,5 +59,20 @@ router.post("/events", uploadEventDocument.single("document"), handleMulterError
 // cause of members/beneficiary edits silently not saving.
 router.put("/events/:id", uploadEventDocument.single("document"), handleMulterError, updateEvent)
 router.delete("/events/:id", deleteEvent)
+
+
+// Payment Verification - Treasurer Routes
+router.get("/payments", getAllPayments)  // Get all payments
+router.patch("/payments/:paymentId/status", updatePaymentStatus)  // Update payment status
+
+// Payout Routes
+router.get("/payouts", getPayouts)
+router.post("/payouts", createPayout)
+router.put("/payouts/:payoutId", updatePayout)
+router.delete("/payouts/:payoutId", deletePayout)
+
+// Report Routes
+router.get("/reports/:reportType", generateReport)
+router.post("/reports/export", exportReport)
 
 export { router }

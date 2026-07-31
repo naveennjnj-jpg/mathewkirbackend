@@ -4,7 +4,7 @@ import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
 import connectDB from "./config/db.js";
-import { admin, user, treasurer} from "./routes/index.js";
+import { admin, user, treasurer,member} from "./routes/index.js";
 // import { checkValidAdminRole } from "./utils/index.js";
 import bodyParser from "body-parser";
 import { forgotPassword } from "./controllers/user/user.js";
@@ -92,6 +92,7 @@ app.use("/api/auth", user);  // Your auth routes including signup
 app.use("/api/forgot-password", forgotPassword);
 app.use("/api/reset-password", verifyPasswordReset);
 app.use("/api/treasurer", treasurer);
+app.use("/api/member", member);
 app.use("/api", user);
 
 // ✅ Error handling middleware (optional but recommended)

@@ -158,7 +158,7 @@ export const profileupdate = async (req: Request, res: Response) => {
 
         return res.status(httpStatusCode.OK).json({
             success: true,
-            message: 'Profile image uploaded successfully',
+            message: 'Uploaded successfully',
             data: {
                 imageUrl: imageUrl,
                 publicId: publicId,

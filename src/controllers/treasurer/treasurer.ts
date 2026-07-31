@@ -10,7 +10,16 @@ import {
     addMemberService,
     updateMemberService,
     deleteMemberService,
-    importMembersService
+    importMembersService,
+    getAllPaymentsService,
+    updatePaymentStatusService,
+    getPayoutsService,
+    createPayoutService,
+    updatePayoutService,
+    deletePayoutService,
+    generateReportService,
+    exportReportService,
+    getAnalyticsStatService
 } from "../../services/treasurer/treasurer"
 import { z } from "zod"
 import mongoose from "mongoose"
@@ -210,3 +219,237 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         })
     }
 }
+
+
+export const getAnalyticsStat = async (req: Request, res: Response) => {
+    try {
+        const result = await getAnalyticsStatService(req)
+
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.NOT_FOUND).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.OK).json({
+            success: true,
+            message: result.message,
+            data: result.data
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: message || "An error occurred"
+        })
+    }
+}
+
+
+
+
+export const getAllPayments = async (req: Request, res: Response) => {
+    try {
+        const result = await getAllPaymentsService(req)
+
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.NOT_FOUND).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.OK).json({
+            success: true,
+            message: result.message,
+            data: result.data
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: message || "An error occurred"
+        })
+    }
+}
+
+export const updatePaymentStatus = async (req: Request, res: Response) => {
+    try {
+        const result = await updatePaymentStatusService(req)
+
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.BAD_REQUEST).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.OK).json({
+            success: true,
+            message: result.message,
+            data: result.data
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: message || "An error occurred"
+        })
+    }
+}
+
+export const getPayouts = async (req: Request, res: Response) => {
+    try {
+        const result = await getPayoutsService(req)
+
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.NOT_FOUND).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.OK).json({
+            success: true,
+            message: result.message,
+            data: result.data
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: message || "An error occurred"
+        })
+    }
+}
+
+export const createPayout = async (req: Request, res: Response) => {
+    try {
+        const result = await createPayoutService(req)
+
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.BAD_REQUEST).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.CREATED).json({
+            success: true,
+            message: result.message,
+            data: result.data
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: message || "An error occurred"
+        })
+    }
+}
+
+export const updatePayout = async (req: Request, res: Response) => {
+    try {
+        const result = await updatePayoutService(req)
+
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.BAD_REQUEST).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.OK).json({
+            success: true,
+            message: result.message,
+            data: result.data
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: message || "An error occurred"
+        })
+    }
+}
+
+export const deletePayout = async (req: Request, res: Response) => {
+    try {
+        const result = await deletePayoutService(req)
+
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.NOT_FOUND).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.OK).json({
+            success: true,
+            message: result.message,
+            data: result.data
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: message || "An error occurred"
+        })
+    }
+}
+
+export const generateReport = async (req: Request, res: Response) => {
+    try {
+        const result = await generateReportService(req)
+
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.BAD_REQUEST).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.OK).json({
+            success: true,
+            message: result.message,
+            data: result.data
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: message || "An error occurred"
+        })
+    }
+}
+
+
+export const exportReport = async (req: Request, res: Response) => {
+    try {
+        const result = await exportReportService(req)
+        
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.BAD_REQUEST).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        const { fileData, contentType, fileName } = result.data;
+
+        // Set appropriate headers for file download
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Length', fileData.length);
+        res.setHeader('Cache-Control', 'no-cache');
+        
+        return res.send(fileData);
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({ 
+            success: false, 
+            message: message || "An error occurred" 
+        })
+    }
+};

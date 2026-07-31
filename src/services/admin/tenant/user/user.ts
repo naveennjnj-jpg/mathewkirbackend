@@ -2,10 +2,10 @@ import { Request } from "express";
 import prisma from "../../../../lib/prisma";
 import { httpStatusCode } from "../../../../lib/constant";
 import { hashPassword, generateNumericOTP } from "../../../../utils/auth-utils";
-import { 
-  UserQueryParams, 
-  CreateUserPayload, 
-  UpdateUserPayload 
+import {
+  UserQueryParams,
+  CreateUserPayload,
+  UpdateUserPayload
 } from "../../../../types/user";
 import { sendTenantInviteEmail } from "../../../../utils/mails/email-service";
 
@@ -44,17 +44,13 @@ export const getAllUsersService = async (req: Request) => {
       ];
     }
 
-    // Role filter
+    // Role filter - Only member and treasurer
     if (role !== 'all') {
-      if (role === 'superadmin') {
-        where.is_super_admin = true;
-      } else {
-        where.memberships = {
-          some: {
-            role: role
-          }
-        };
-      }
+      where.memberships = {
+        some: {
+          role: role // member or treasurer
+        }
+      };
     }
 
     // Tenant filter
@@ -74,6 +70,14 @@ export const getAllUsersService = async (req: Request) => {
         }
       };
     }
+
+    // Only fetch users who have at least one membership
+    where.memberships = {
+      some: {
+        ...(where.memberships?.some || {}),
+        status: 'active'
+      }
+    };
 
     const total = await prisma.user.count({ where });
 
@@ -111,21 +115,37 @@ export const getAllUsersService = async (req: Request) => {
 
     // Format users for response
     const formattedUsers = users.map(user => {
-      const membership = user.memberships[0];
+      // Get the primary membership (first active one)
+      const primaryMembership = user.memberships.find(m => m.status === 'active') || user.memberships[0];
+
+      // Determine role from membership
+      let userRole = 'member'; // Default
+      if (primaryMembership) {
+        userRole = primaryMembership.role; // member or treasurer
+      }
+
       return {
         id: user.user_id,
         name: user.full_name || 'Unknown',
         email: user.email,
         phone: user.phone,
-        role: user.is_super_admin ? 'superadmin' : (membership?.role || 'user'),
-        tenant: membership?.tenant?.name || 'No Tenant',
-        tenantId: membership?.tenant_id || null,
-        tenantStatus: membership?.tenant?.status || null,
-        status: membership?.status || 'inactive',
-        joinedDate: membership?.joined_at || user.created_at,
-        lastActive: user.created_at, // Could be updated with last login
-        isSuperAdmin: user.is_super_admin,
-        memberships: user.memberships,
+        role: userRole, // member or treasurer
+        tenant: primaryMembership?.tenant?.name || 'No Tenant',
+        tenantId: primaryMembership?.tenant_id || null,
+        tenantStatus: primaryMembership?.tenant?.status || null,
+        status: primaryMembership?.status || 'inactive',
+        joinedDate: primaryMembership?.joined_at || user.created_at,
+        lastActive: user.created_at,
+        isSuperAdmin: false,
+        memberships: user.memberships.map(m => ({
+          id: m.membership_id,
+          tenantId: m.tenant_id,
+          tenantName: m.tenant.name,
+          tenantSubdomain: m.tenant.subdomain,
+          role: m.role,
+          status: m.status,
+          joinedAt: m.joined_at
+        })),
         stats: {
           memberships: user._count.memberships,
           verifiedContributions: user._count.verified_contributions,
@@ -152,9 +172,14 @@ export const getAllUsersService = async (req: Request) => {
       }
     });
 
-    // Get unique roles from memberships
+    // Get unique roles from memberships (only member, treasurer)
     const roles = await prisma.membership.groupBy({
       by: ['role'],
+      where: {
+        role: {
+          in: ['member', 'treasurer']
+        }
+      },
       _count: true
     });
 
@@ -174,7 +199,7 @@ export const getAllUsersService = async (req: Request) => {
           name: t.name,
           subdomain: t.subdomain
         })),
-        roles: ['superadmin', ...roles.map(r => r.role)]
+        roles: roles.map(r => r.role) // ['member', 'treasurer']
       }
     };
 
@@ -360,7 +385,7 @@ export const createUserService = async (req: Request) => {
     });
 
     let user = existingUser;
-    let tempPassword = password;
+    let tempPassword: string = password ?? "";
 
     // If user doesn't exist, create them
     if (!user) {
@@ -425,13 +450,17 @@ export const createUserService = async (req: Request) => {
     // Send invitation email if new user
     if (!existingUser) {
       try {
+        const tenantDetails = tenantId
+          ? await getTenantDetails(tenantId)
+          : { name: "System", subdomain: "default" };
+
         await sendTenantInviteEmail({
           to: email,
-          userName: fullName,
-          tempPassword: tempPassword,
-          role: role,
-          tenantName: tenantId ? await getTenantName(tenantId) : 'System',
-          invitedBy: 'Admin'
+          tempPassword,
+          role,
+          tenantName: tenantDetails.name,
+          tenantSubdomain: tenantDetails.subdomain,
+          invitedBy: "Admin",
         });
       } catch (emailError) {
         console.error('Email sending error:', emailError);
@@ -642,8 +671,16 @@ export const deleteUserService = async (payload: { id: string; userId: string })
     const user = await prisma.user.findUnique({
       where: { user_id: id },
       include: {
-        memberships: true
-      }
+        memberships: {
+          include: {
+            tenant: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!user) {
@@ -872,15 +909,26 @@ export const getUserStatsService = async () => {
   }
 };
 
-// Helper function to get tenant name
-async function getTenantName(tenantId: string): Promise<string> {
+async function getTenantDetails(
+  tenantId: string
+): Promise<{ name: string; subdomain: string }> {
   try {
     const tenant = await prisma.tenant.findUnique({
       where: { tenant_id: tenantId },
-      select: { name: true }
+      select: {
+        name: true,
+        subdomain: true,
+      },
     });
-    return tenant?.name || 'Unknown Tenant';
+
+    return {
+      name: tenant?.name || "Unknown Tenant",
+      subdomain: tenant?.subdomain || "default",
+    };
   } catch {
-    return 'Unknown Tenant';
+    return {
+      name: "Unknown Tenant",
+      subdomain: "default",
+    };
   }
 }

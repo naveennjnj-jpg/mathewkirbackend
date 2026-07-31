@@ -1,28 +1,155 @@
-// controllers/treasurer/events.ts
+// controllers/member/member.ts
 import { Request, Response } from "express"
 import { httpStatusCode } from "../../lib/constant"
 import { errorParser } from "../../lib/errors/error-response-handler"
+import { clientSignupSchema, passswordResetSchema } from "../../validation/client-user"
+import { formatZodErrors } from "../../validation/format-zod-errors"
 import {
-    createEventService,
+    getDashboardStatsService,
+    getContributionsService,
     getEventsService,
-    getEventByIdService,
-    updateEventService,
-    deleteEventService,
-    getEventSummaryService
-} from "../../services/treasurer/events"
+    submitPaymentService,
+    getBeneficiariesService,
+    createBeneficiaryService,
+    updateBeneficiaryService,
+    deleteBeneficiaryService
+} from "../../services/member/member"
+import { z } from "zod"
+import mongoose from "mongoose"
 
-/**
- * Create a new event
- */
-export const createEvent = async (req: Request, res: Response) => {
+
+export const getDashboardStats = async (req: Request, res: Response) => {
     try {
-        // Log request body for debugging
-        console.log('📝 Create Event Request:')
-        console.log('Body:', req.body)
-        console.log('Files:', req.file)
-        
-        const result = await createEventService(req)
-        
+        const result = await getDashboardStatsService(req)
+
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.NOT_FOUND).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.OK).json({
+            success: true,
+            message: result.message,
+            data: result.data
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: message || "An error occurred"
+        })
+    }
+}
+
+
+export const getContributions = async (req: Request, res: Response) => {
+    try {
+        const result = await getContributionsService(req)
+
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.NOT_FOUND).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.OK).json({
+            success: true,
+            message: result.message,
+            data: result.data
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: message || "An error occurred"
+        })
+    }
+}
+
+
+export const getEvents = async (req: Request, res: Response) => {
+    try {
+        const result = await getEventsService(req)
+
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.NOT_FOUND).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.OK).json({
+            success: true,
+            message: result.message,
+            data: result.data
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: message || "An error occurred"
+        })
+    }
+}
+
+
+export const submitPayment = async (req: Request, res: Response) => {
+    try {
+        const result = await submitPaymentService(req)
+
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.BAD_REQUEST).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.OK).json({
+            success: true,
+            message: result.message,
+            data: result.data
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: message || "An error occurred"
+        })
+    }
+}
+
+export const getBeneficiaries = async (req: Request, res: Response) => {
+    try {
+        const result = await getBeneficiariesService(req)
+
+        if (!result.success) {
+            return res.status(result.code || httpStatusCode.NOT_FOUND).json({
+                success: false,
+                message: result.message
+            })
+        }
+
+        return res.status(httpStatusCode.OK).json({
+            success: true,
+            message: result.message,
+            data: result.data
+        })
+    } catch (error: any) {
+        const { code, message } = errorParser(error)
+        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
+            success: false,
+            message: message || "An error occurred"
+        })
+    }
+}
+
+export const createBeneficiary = async (req: Request, res: Response) => {
+    try {
+        const result = await createBeneficiaryService(req)
+
         if (!result.success) {
             return res.status(result.code || httpStatusCode.BAD_REQUEST).json({
                 success: false,
@@ -44,70 +171,10 @@ export const createEvent = async (req: Request, res: Response) => {
     }
 }
 
-/**
- * Get all events
- */
-export const getEvents = async (req: Request, res: Response) => {
+export const updateBeneficiary = async (req: Request, res: Response) => {
     try {
-        const result = await getEventsService(req)
-        
-        if (!result.success) {
-            return res.status(result.code || httpStatusCode.NOT_FOUND).json({
-                success: false,
-                message: result.message
-            })
-        }
+        const result = await updateBeneficiaryService(req)
 
-        return res.status(httpStatusCode.OK).json({
-            success: true,
-            message: result.message,
-            data: result.data,
-            pagination: result.pagination
-        })
-    } catch (error: any) {
-        const { code, message } = errorParser(error)
-        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
-            success: false,
-            message: message || "An error occurred"
-        })
-    }
-}
-
-/**
- * Get event by ID
- */
-export const getEventById = async (req: Request, res: Response) => {
-    try {
-        const result = await getEventByIdService(req)
-        
-        if (!result.success) {
-            return res.status(result.code || httpStatusCode.NOT_FOUND).json({
-                success: false,
-                message: result.message
-            })
-        }
-
-        return res.status(httpStatusCode.OK).json({
-            success: true,
-            message: result.message,
-            data: result.data
-        })
-    } catch (error: any) {
-        const { code, message } = errorParser(error)
-        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
-            success: false,
-            message: message || "An error occurred"
-        })
-    }
-}
-
-/**
- * Update event
- */
-export const updateEvent = async (req: Request, res: Response) => {
-    try {
-        const result = await updateEventService(req)
-        
         if (!result.success) {
             return res.status(result.code || httpStatusCode.BAD_REQUEST).json({
                 success: false,
@@ -129,40 +196,10 @@ export const updateEvent = async (req: Request, res: Response) => {
     }
 }
 
-/**
- * Delete event
- */
-export const deleteEvent = async (req: Request, res: Response) => {
+export const deleteBeneficiary = async (req: Request, res: Response) => {
     try {
-        const result = await deleteEventService(req)
-        
-        if (!result.success) {
-            return res.status(result.code || httpStatusCode.NOT_FOUND).json({
-                success: false,
-                message: result.message
-            })
-        }
+        const result = await deleteBeneficiaryService(req)
 
-        return res.status(httpStatusCode.OK).json({
-            success: true,
-            message: result.message
-        })
-    } catch (error: any) {
-        const { code, message } = errorParser(error)
-        return res.status(code || httpStatusCode.INTERNAL_SERVER_ERROR).json({
-            success: false,
-            message: message || "An error occurred"
-        })
-    }
-}
-
-/**
- * Get event summary
- */
-export const getEventSummary = async (req: Request, res: Response) => {
-    try {
-        const result = await getEventSummaryService(req)
-        
         if (!result.success) {
             return res.status(result.code || httpStatusCode.NOT_FOUND).json({
                 success: false,

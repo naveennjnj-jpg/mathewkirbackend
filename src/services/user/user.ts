@@ -19,9 +19,11 @@ interface SignupPayload {
     phoneNumber?: string
 }
 
-interface LoginPayload {
-    email: string
-    password: string
+// types/auth.ts
+export interface LoginPayload {
+    email: string;
+    password: string;
+    subdomain?: string; // Optional subdomain for tenant validation
 }
 
 interface UpdateUserPayload {
@@ -74,16 +76,14 @@ interface UpdatePlatformSettingPayload {
 // ============================================
 
 /**
- * Login Service
+ * Login Service with Tenant Validation
  */
 export const loginService = async (payload: LoginPayload) => {
     try {
-        const { email, password } = payload
-        // console.log("emial",email)
-        // console.log("password",password)
-        const normalizedEmail = email.toLowerCase().trim()
+        const { email, password, subdomain } = payload; // Add subdomain to payload
+        const normalizedEmail = email.toLowerCase().trim();
 
-        // Find user
+        // Find user with memberships and tenant details
         const user = await prisma.user.findUnique({
             where: { email: normalizedEmail },
             include: {
@@ -93,79 +93,151 @@ export const loginService = async (payload: LoginPayload) => {
                     }
                 }
             }
-        })
+        });
 
         if (!user) {
             return {
                 success: false,
-                message: "user not found",
+                message: "User not found",
                 code: httpStatusCode.UNAUTHORIZED
-            }
+            };
         }
 
         // Verify password
-        const isValidPassword = await comparePassword(password, user.password_hash)
+        const isValidPassword = await comparePassword(password, user.password_hash);
         if (!isValidPassword) {
             return {
                 success: false,
                 message: "Invalid password",
                 code: httpStatusCode.UNAUTHORIZED
+            };
+        }
+
+        // CRITICAL: Tenant Validation
+        // If subdomain is provided, user must belong to that tenant
+        if (subdomain) {
+            // Check if user has membership in this tenant
+            const membership = user.memberships.find(
+                m => m.tenant.subdomain === subdomain && m.status === 'active'
+            );
+
+            if (!membership) {
+                return {
+                    success: false,
+                    message: `You don't have access to "${subdomain}". Please use your organization's subdomain.`,
+                    code: httpStatusCode.FORBIDDEN
+                };
+            }
+
+            // Super admin can access any tenant, but we still validate membership exists
+            // If super admin, allow access regardless of membership
+            if (!user.is_super_admin && !membership) {
+                return {
+                    success: false,
+                    message: `Access denied. You are not a member of "${subdomain}".`,
+                    code: httpStatusCode.FORBIDDEN
+                };
             }
         }
 
-        // Determine role — super-admin check FIRST (tenant-less, global role)
-        let primaryRole = "member"
+        // Determine role
+        let primaryRole = "member";
+        let selectedTenant = null;
+        let primaryTenantId = null;
 
-        if (user.is_super_admin) {
-            primaryRole = "admin"
-        } else if (user.memberships.length > 0) {
-            const roles = user.memberships.map((m) => m.role)
+        // If subdomain is provided, use that tenant's role
+        if (subdomain) {
+            const membership = user.memberships.find(
+                m => m.tenant.subdomain === subdomain && m.status === 'active'
+            );
 
-            if (roles.includes("treasurer")) {
-                primaryRole = "treasurer"
-            } else if (roles.includes("member")) {
-                primaryRole = "member"
-            } else {
-                primaryRole = roles[0]
+            if (membership) {
+                selectedTenant = membership.tenant;
+                primaryTenantId = membership.tenant_id;
+                primaryRole = membership.role;
+            }
+        } else {
+            // No subdomain: Super admin OR fallback to first active membership
+            if (user.is_super_admin) {
+                primaryRole = "admin";
+            } else if (user.memberships.length > 0) {
+                // Get first active membership
+                const activeMembership = user.memberships.find(m => m.status === 'active');
+                if (activeMembership) {
+                    selectedTenant = activeMembership.tenant;
+                    primaryTenantId = activeMembership.tenant_id;
+                    primaryRole = activeMembership.role;
+
+                    // Check if user has multiple roles, prioritize treasurer
+                    const roles = user.memberships.map((m) => m.role);
+                    if (roles.includes("treasurer")) {
+                        primaryRole = "treasurer";
+                    } else if (roles.includes("admin")) {
+                        primaryRole = "admin";
+                    } else if (roles.includes("member")) {
+                        primaryRole = "member";
+                    }
+                }
             }
         }
 
-        // Generate token
+        // Generate token with tenant information
         const token = generateAuthToken({
             id: user.user_id,
             email: user.email,
-            role: primaryRole
-        })
+            role: primaryRole,
+            tenant_id: primaryTenantId,
+            tenant_subdomain: selectedTenant?.subdomain || null,
+            is_super_admin: user.is_super_admin
+        });
 
-        // Remove sensitive data (only fields that actually exist on User now)
-        const { password_hash, ...userData } = user
+        // Remove sensitive data
+        const { password_hash, ...userData } = user;
 
-        return {
-            success: true,
-            message: "Login successful",
-            data: {
-                user: userData,
+        // Prepare response data
+        const responseData = {
+            user: {
+                ...userData,
                 role: primaryRole,
-                tenants: user.memberships.map(m => ({
+                tenant_id: primaryTenantId,
+                tenant_subdomain: selectedTenant?.subdomain || null
+            },
+            role: primaryRole,
+            tenants: user.memberships
+                .filter(m => m.status === 'active')
+                .map(m => ({
                     id: m.tenant_id,
                     name: m.tenant.name,
                     subdomain: m.tenant.subdomain,
                     role: m.role,
-                    status: m.tenant.status
-                }))
-            },
+                    status: m.tenant.status,
+                    logo: m.tenant.logo_url,
+                    brand_color: m.tenant.brand_color
+                })),
+            currentTenant: selectedTenant ? {
+                id: selectedTenant.tenant_id,
+                name: selectedTenant.name,
+                subdomain: selectedTenant.subdomain,
+                role: primaryRole
+            } : null
+        };
+
+        return {
+            success: true,
+            message: "Login successful",
+            data: responseData,
             token
-        }
+        };
 
     } catch (error: any) {
-        console.error("Login error:", error)
+        console.error("Login error:", error);
         return {
             success: false,
             message: error.message || "Failed to login",
             code: httpStatusCode.INTERNAL_SERVER_ERROR
-        }
+        };
     }
-}
+};
 
 /**
  * Get User Data Service
