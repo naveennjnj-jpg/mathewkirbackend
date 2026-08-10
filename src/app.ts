@@ -26,48 +26,10 @@ app.use((req, res, next) => {
 
 // ✅ CORS Configuration - ONLY for 818live.net and subdomains
 const corsOptions = {
-  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) {
-      return callback(null, true);
-    }
-
-    // Allowed domains
-    const allowedDomains = [
-      "https://818live.net",
-      "http://818live.net",
-      /^https?:\/\/([a-zA-Z0-9-]+\.)*818live\.net$/,
-    ];
-
-    const isAllowed = allowedDomains.some(domain => {
-      if (domain instanceof RegExp) {
-        return domain.test(origin);
-      }
-      return domain === origin;
-    });
-
-    if (isAllowed) {
-      console.log('✅ Allowed origin:', origin);
-      callback(null, true);
-    } else {
-      console.log('❌ Blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true,  // 👈 Yeh "*" ki tarah hai, sabko allow karega
   methods: ["GET", "POST", "PATCH", "DELETE", "PUT", "OPTIONS"],
   credentials: true,
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "X-Requested-With",
-    "x-tenant-subdomain",
-    "Accept",
-    "Origin",
-    "Access-Control-Allow-Origin",
-    "Access-Control-Allow-Methods",
-    "Access-Control-Allow-Headers",
-  ],
-  exposedHeaders: ["Set-Cookie"],
+  allowedHeaders: ["*"],  // 👈 Sab headers allow
 };
 
 // Apply CORS middleware
