@@ -35,11 +35,10 @@ const corsOptions = {
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5174",
     "https://mathewkir.vercel.app",
+    "http://818.live.net",
     
     // ✅ Production domain with any subdomain
-    /^https:\/\/[a-zA-Z0-9-]*\.?thebrtsa\.com$/,
-    /^http:\/\/[a-zA-Z0-9-]*\.?thebrtsa\.com$/,
-    
+    /^https?:\/\/([a-zA-Z0-9-]+\.)*818\.live\.net$/,
     // ✅ Vercel preview deployments
     /^https:\/\/[a-zA-Z0-9-]*\.vercel\.app$/,
     "https://test-app-taupe-ten.vercel.app",
