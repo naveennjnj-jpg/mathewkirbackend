@@ -18,38 +18,23 @@ const app = express();
 
 app.set("trust proxy", true);
 
-// ✅ CORS Configuration - FIXED
+// ✅ CORS Configuration - ONLY for 818live.net and subdomains
 const corsOptions = {
- origin: [
-    // ✅ Localhost patterns
-    /^http:\/\/[a-zA-Z0-9-]*\.?localhost:\d+$/,
-    /^http:\/\/[a-zA-Z0-9-]*\.?127\.0\.0\.1:\d+$/,
-    /^https:\/\/[a-zA-Z0-9-]*\.?localhost:\d+$/,
-    /^https:\/\/[a-zA-Z0-9-]*\.?127\.0\.0\.1:\d+$/,
+  origin: [
+    // Your main domain
+    "https://818live.net",
+    "http://818live.net", // Include HTTP just in case
     
-    // ✅ Specific localhost ports
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "http://localhost:5174",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5174",
-    "https://mathewkir.vercel.app",
-    "http://818.live.net",
-    
-    // ✅ Production domain with any subdomain
-    /^https?:\/\/([a-zA-Z0-9-]+\.)*818\.live\.net$/,
-    // ✅ Vercel preview deployments
-    /^https:\/\/[a-zA-Z0-9-]*\.vercel\.app$/,
-    "https://test-app-taupe-ten.vercel.app",
+    // All subdomains (HTTP and HTTPS)
+    /^https?:\/\/([a-zA-Z0-9-]+\.)*818live\.net$/,
   ],
   methods: ["GET", "POST", "PATCH", "DELETE", "PUT", "OPTIONS"],
   credentials: true,
-    allowedHeaders: [
+  allowedHeaders: [
     "Content-Type", 
     "Authorization", 
     "X-Requested-With",
-    "x-tenant-subdomain", // ✅ ADD THIS - IMPORTANT!
+    "x-tenant-subdomain", // Keep this if your app uses it
     "Accept",
     "Origin",
     "Access-Control-Allow-Origin",
@@ -57,9 +42,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
-// ✅ Handle preflight requests
-app.options("*", cors(corsOptions));
+app.options("*", cors(corsOptions)); // Handle preflight requests
 
 app.use(bodyParser.json({
   verify: (req: any, res, buf) => {
